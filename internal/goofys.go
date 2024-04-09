@@ -964,7 +964,7 @@ func (fs *Goofys) FlushFile(
 		}
 	}
 
-	err = fh.FlushFile()
+	err = fh.FlushFile() // jose has mpu thing in it
 	if err != nil {
 		// if we returned success from creat() earlier
 		// linux may think this file exists even when it doesn't,

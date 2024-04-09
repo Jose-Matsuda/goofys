@@ -1,0 +1,12 @@
+So I am looking for anything to do with multipart
+anything i find sus i note with 'JOSE'
+Nothing in main.go
+Possibly reference partSize() in file.go
+
+Under func newGoofys(ctx context.Context, bucket string, flags *FlagStorage, newBackend in goofys.go it goes to backend.go via storagebackend
+Though i dont feel like theres anything in backend.go that does it for me?
+
+How about this, NoParallelMultipart in backend.go?
+of course also partSize in file.go
+
+you know what let's just commit and see what the heck we can do its getting hard to track for my smol brain

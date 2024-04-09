@@ -63,7 +63,10 @@ func NewS3(bucket string, flags *FlagStorage, config *S3Config) (*S3Backend, err
 		config:    config,
 		cap: Capabilities{
 			Name:             "s3",
-			MaxMultipartSize: 5 * 1024 * 1024 * 1024,
+			MaxMultipartSize: 5 * 1024 * 1024 * 1024, // JOSE this seems to indicate that max multipart size is 5Gb(?)
+			// could also turn off parallel here, but perhaps that doesnt matter
+			// we could also just change the 'name' here to be something random like Netapp and then test for that.
+			NoParallelMultipart: true,
 		},
 	}
 
@@ -471,7 +474,8 @@ func (s *S3Backend) RenameBlob(param *RenameBlobInput) (*RenameBlobOutput, error
 
 func (s *S3Backend) mpuCopyPart(from string, to string, mpuId string, bytes string, part int64,
 	sem semaphore, srcEtag *string, etag **string, errout *error) {
-
+	// JOSE : only eventually referenced in copyObjectMultipart by mpuCopyParts
+	// so this should not be reachable if CopyBlob commented out the copyObjMultipart call
 	defer sem.P(1)
 
 	// XXX use CopySourceIfUnmodifiedSince to ensure that
@@ -507,7 +511,7 @@ func (s *S3Backend) mpuCopyPart(from string, to string, mpuId string, bytes stri
 	return
 }
 
-func sizeToParts(size int64) (int, int64) {
+func sizeToParts(size int64) (int, int64) { // again this should be unreachable once copyObjMultipart call is commented out
 	const MAX_S3_MPU_SIZE int64 = 5 * 1024 * 1024 * 1024 * 1024
 	if size > MAX_S3_MPU_SIZE {
 		panic(fmt.Sprintf("object size: %v exceeds maximum S3 MPU size: %v", size, MAX_S3_MPU_SIZE))
@@ -529,6 +533,7 @@ func sizeToParts(size int64) (int, int64) {
 
 func (s *S3Backend) mpuCopyParts(size int64, from string, to string, mpuId string,
 	srcEtag *string, etags []*string, partSize int64, err *error) {
+	// again should be unreachable once commented out
 
 	rangeFrom := int64(0)
 	rangeTo := int64(0)
@@ -552,6 +557,7 @@ func (s *S3Backend) mpuCopyParts(size int64, from string, to string, mpuId strin
 	sem.V(MAX_CONCURRENCY)
 }
 
+// JOSE so what calls this copyObjectMultipart...
 func (s *S3Backend) copyObjectMultipart(size int64, from string, to string, mpuId string,
 	srcEtag *string, metadata map[string]*string, storageClass *string) (requestId string, err error) {
 	nParts, partSize := sizeToParts(size)
@@ -582,6 +588,7 @@ func (s *S3Backend) copyObjectMultipart(size int64, from string, to string, mpuI
 		}
 
 		resp, err := s.CreateMultipartUpload(params)
+		// JOSE this probs changes? or get diverted, note that backedn_gcs doesnt have this implemented, only this and gcss3
 		if err != nil {
 			return "", mapAwsError(err)
 		}
@@ -661,13 +668,18 @@ func (s *S3Backend) CopyBlob(param *CopyBlobInput) (*CopyBlobOutput, error) {
 
 	from := s.bucket + "/" + param.Source
 
+	/* Just comment this out, now what will happen.
 	if !s.gcs && *param.Size > COPY_LIMIT {
+		// JOSE this has to change? this seems to be the only thing that calls the copyObjMultipart
+		// see that it also only enters here if its not s.gcs. meaning if we can "trick" it or say or if its Netapp we can ignore this?
 		reqId, err := s.copyObjectMultipart(int64(*param.Size), from, param.Destination, "", param.ETag, param.Metadata, param.StorageClass)
 		if err != nil {
 			return nil, err
 		}
 		return &CopyBlobOutput{reqId}, nil
 	}
+	*/
+	// admittedly, there is another par that im unsure of, and its just the name of `CreateMultiPartlUpload`
 
 	params := &s3.CopyObjectInput{
 		Bucket:            &s.bucket,
@@ -818,6 +830,7 @@ func (s *S3Backend) PutBlob(param *PutBlobInput) (*PutBlobOutput, error) {
 	}, nil
 }
 
+// JOSE: how is this reached? will it just never be reached? i only see reference in file.go
 func (s *S3Backend) MultipartBlobBegin(param *MultipartBlobBeginInput) (*MultipartBlobCommitInput, error) {
 	mpu := s3.CreateMultipartUploadInput{
 		Bucket:       &s.bucket,
@@ -841,7 +854,7 @@ func (s *S3Backend) MultipartBlobBegin(param *MultipartBlobBeginInput) (*Multipa
 		mpu.ACL = &s.config.ACL
 	}
 
-	resp, err := s.CreateMultipartUpload(&mpu)
+	resp, err := s.CreateMultipartUpload(&mpu) //refers to api
 	if err != nil {
 		s3Log.Errorf("CreateMultipartUpload %v = %v", param.Key, err)
 		return nil, mapAwsError(err)
@@ -855,6 +868,7 @@ func (s *S3Backend) MultipartBlobBegin(param *MultipartBlobBeginInput) (*Multipa
 	}, nil
 }
 
+// JOSE: like above only referenced in file.go
 func (s *S3Backend) MultipartBlobAdd(param *MultipartBlobAddInput) (*MultipartBlobAddOutput, error) {
 	en := &param.Commit.Parts[param.PartNumber-1]
 	atomic.AddUint32(&param.Commit.NumParts, 1)
@@ -887,6 +901,7 @@ func (s *S3Backend) MultipartBlobAdd(param *MultipartBlobAddInput) (*MultipartBl
 	return &MultipartBlobAddOutput{s.getRequestId(req)}, nil
 }
 
+// again referenced by file.go
 func (s *S3Backend) MultipartBlobCommit(param *MultipartBlobCommitInput) (*MultipartBlobCommitOutput, error) {
 	parts := make([]*s3.CompletedPart, param.NumParts)
 	for i := uint32(0); i < param.NumParts; i++ {

@@ -98,6 +98,7 @@ func (fh *FileHandle) initMPU() {
 	fs := fh.inode.fs
 	fh.mpuName = &fh.key
 
+	// how is this reached
 	resp, err := fh.cloud.MultipartBlobBegin(&MultipartBlobBeginInput{
 		Key:         *fh.mpuName,
 		ContentType: fs.flags.GetMimeType(*fh.mpuName),
@@ -183,7 +184,7 @@ func (fh *FileHandle) waitForCreateMPU() (err error) {
 	return
 }
 
-func (fh *FileHandle) partSize() uint64 {
+func (fh *FileHandle) partSize() uint64 { //JOSE this seems to determine what our multipart size is.
 	var size uint64
 
 	if fh.lastPartId < 500 {
@@ -204,7 +205,7 @@ func (fh *FileHandle) partSize() uint64 {
 }
 
 func (fh *FileHandle) uploadCurrentBuf(parallel bool) (err error) {
-	err = fh.waitForCreateMPU()
+	err = fh.waitForCreateMPU() // JOSE only does something if mpuId is nil
 	if err != nil {
 		return
 	}
@@ -217,6 +218,7 @@ func (fh *FileHandle) uploadCurrentBuf(parallel bool) (err error) {
 	if parallel {
 		fh.mpuWG.Add(1)
 		go fh.mpuPart(buf, part, fh.nextWriteOffset)
+		// JOSE is this mpuPart is here, but also right below with mpuPartNoSpawn
 	} else {
 		err = fh.mpuPartNoSpawn(buf, part, fh.nextWriteOffset, false)
 		if fh.lastWriteError == nil {
@@ -723,6 +725,7 @@ func (fh *FileHandle) FlushFile() (err error) {
 
 	if fh.inode.Parent == nil {
 		// the file is deleted
+		// JOSE only in here if mpuID is not nil
 		if fh.mpuId != nil {
 			go func() {
 				_, _ = fh.cloud.MultipartBlobAbort(fh.mpuId)
@@ -739,6 +742,7 @@ func (fh *FileHandle) FlushFile() (err error) {
 		if err != nil {
 			if fh.mpuId != nil {
 				go func() {
+					// again only if mpuid is not null
 					_, _ = fh.cloud.MultipartBlobAbort(fh.mpuId)
 					fh.mpuId = nil
 				}()
@@ -785,6 +789,7 @@ func (fh *FileHandle) FlushFile() (err error) {
 		fh.buf = nil
 	}
 
+	// JOSE: this always gets hit
 	resp, err := fh.cloud.MultipartBlobCommit(fh.mpuId)
 	if err != nil {
 		return
